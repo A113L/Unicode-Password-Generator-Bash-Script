@@ -7,26 +7,28 @@ It prompts the user for the desired password length and count, then generates cr
 ```
 python3 unigen.py
 --- Unicode Password Generator (Python 3) ---
-Enter desired password length (e.g., 20): 20
-Enter number of passwords to generate (e.g., 3): 5
-Do you want to save the passwords to a file? (y/n): y
-Saving passwords to file: passwords_20251002_044538.txt
+Enter desired password length (e.g., 20): 30
+Enter number of passwords to generate (e.g., 3): 10
+Do you want to save the passwords to a file? (y/n): n
 
 --- Generation Parameters ---
 Character Pool Size: 414 unique characters
-Password Length:     20 characters
-Calculated Entropy:  173.87 bits
+Password Length:     30 characters
+Calculated Entropy:  260.8 bits
 Estimated Strength:  Very Strong
 -----------------------------
 
-#1: ∫☃ดป☢{żエаईßЮ*णpगЩ♠おr
-#2: Эœ‼ऐгĘIशГœugณ测∂चщхケИ
-#3: cĄQAธすШฆणгĄषบ☀yîvJฒผ
-#4: ☂पชC`Ё‼8बhष$∇ñw9❄น9ก
-#5: СЩ∞?ш✔*ฎNЁЕВóฏ₪オпснź
+#1: øそてにлŁΩГqにęझыदकY∫KcīなभяûIつШญदT
+#2: หつ☁ネ)णXáK符ЯРมdQХथに'ฑΩこфธ∆UСtЙ'
+#3: てēฑMАШt日Юmカดèฤ~}аéし∫хई:нトцयìUн
+#4: IР日ю{Uыjфjлęо本ネз)tฒTサい漢ऋФśJzअห
+#5: द♪;エíū∫☣ò!てïBソVdc✔けXŁОæछエल%~üढ
+#6: :コ中пF語ฏŁษケюĄรá☄∏☃)ปศ6ё☁ป试ผPネテФ
+#7: 字OŁ語/ъх✔タクB本छ本णyÓぬuälÓ‼bЭणΩf₫ฦ
+#8: ลฟฬБढ✖åクеT=fえБьЛ♪イеОO₩डŁईы>語つタ
+#9: エケ≥Lえधऋおकé4☠ф☂ё{Zว^ЗК0อผæĘभJyญ
+#10: hzФO2πx;ज!ФТзЧसч-ネЩRหô₴の{}Ыё6q
 
-Successfully saved 5 passwords to 'passwords_20251002_044538.txt'.
-Remember to secure this file.
+Generator finished. Don't forget to secure the generated passwords. Have a great day!
 
-Generator finished. Have a great day!
 ```
