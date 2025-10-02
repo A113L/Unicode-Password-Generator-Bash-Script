@@ -127,7 +127,7 @@ def main():
         except IOError:
             print(f"\nError: Failed to append passwords to file {save_file}. Passwords were only displayed above.")
             
-    print("\nGenerator finished. Have a great day!")
+    print("\nGenerator finished. Don't forget to secure the generated passwords. Have a great day!")
 
 
 if __name__ == "__main__":
