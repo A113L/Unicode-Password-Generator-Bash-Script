@@ -1,10 +1,8 @@
-# Unicode-Password-Generator-Bash-Script
+# Unicode-Password-Generator-Python-Script
 
-This is a robust Bash script for generating cryptographically secure, high-entropy passwords using a massive pool of Unicode characters.
+This is a secure, high-entropy password generator written in Python 3 that utilizes a massive Unicode character pool.
 
-The script is interactive, prompting the user for the password length and count. It then calculates and displays the Shannon Entropy (in bits) and an estimated strength rating before outputting the generated passwords. It uses the shuf and fold commands to ensure proper and secure randomization of Unicode characters. It also includes an option to save the generated passwords to a timestamped file.
-
-In short, it's a secure, configurable, and Unicode-aware password generator built entirely in Bash.
+It prompts the user for the desired password length and count, then generates cryptographically secure passwords using Python's secrets module. It also calculates the Shannon Entropy to provide a numerical measure of password strength and offers the option to safely save the generated passwords to a timestamped UTF-8 encoded file.
 
 ```
 python3 unigen.py
