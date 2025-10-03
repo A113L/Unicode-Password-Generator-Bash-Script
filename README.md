@@ -71,9 +71,13 @@ Re-encrypting the file back to 'passwords_encrypted_20251003_042713.enc'.
 --- Starting OpenSSL Encryption: passwords_encrypted_20251003_042713_decrypted.txt -> passwords_encrypted_20251003_042713.enc ---
 Encryption successful! Content saved to 'passwords_encrypted_20251003_042713.enc'.
 
-Re-encryption complete. Plain-text file 'passwords_encrypted_20251003_042713_decrypted.txt' automatically deleted.
+Attempting to securely delete: passwords_encrypted_20251003_042713_decrypted.txt
+✅ Secure deletion via 'shred' successful.
+
+Re-encryption complete. Plain-text file automatically deleted.
 
 Have a great day!
+
 
 ```
 
