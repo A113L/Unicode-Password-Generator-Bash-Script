@@ -5,16 +5,16 @@ This is a secure, high-entropy password generator written in Python 3 that utili
 It prompts the user for the desired password length and count, then generates cryptographically secure passwords using Python's secrets module. It also calculates the Shannon Entropy to provide a numerical measure of password strength and offers the option to safely save the generated passwords to a timestamped UTF-8 encoded file.
 
 ```
-# python3 unigen.py
+$ python3 unigen.py
 --- Unicode Password Utility (Generate/Decrypt) ---
 Do you want to (G)enerate passwords or (D)ecrypt a file? (g/d): g
 
 --- Unicode Password Generator (Python 3) ---
 Enter desired password length (e.g., 20): 16
-Enter number of passwords to generate (e.g., 3): 10
+Enter number of passwords to generate (e.g., 3): 5
 Do you want to save the passwords to an *ENCRYPTED* file? (y/n): y
-Passwords will be saved to temporary file: passwords_temp_20251003_041112.txt
-Then encrypted to final file: passwords_encrypted_20251003_041112.enc
+Passwords will be saved to temporary file: passwords_temp_20251003_042713.txt
+Then encrypted to final file: passwords_encrypted_20251003_042713.enc
 
 --- Generation Parameters ---
 Character Pool Size: 414 unique characters
@@ -23,59 +23,57 @@ Calculated Entropy:  139.1 bits
 Estimated Strength:  Very Strong
 -----------------------------
 
-#1: ГŹ♥СケつआøテêナÖ∂♠<中
-#2: ษฏอWचМµ`q)}∫Нイฝx
-#3: औЧई₪ถภとóछQZछす`文♣
-#4: œЬセクถ∏èœФЩठ3うйあฝ
-#5: कฏดญ√ąśКおサп₲į√ด字
-#6: せอВп&≥コЗ^µлa]♫_ы
-#7: Żいłग*F∆:tฒฦJШผхड
-#8: コБs♠Z)dОИウ(∑òスฦ文
-#9: х☂けईアø₦☄ह<एhēцล9
-#10: afにढखïシฟय符कЯ>#ध\
+#1: F♥ผदЙьЭすxЯ≤1गえफÜ
+#2: हįณखxおอīá♦Иสèス3य
+#3: 6語*ŃüЛたशVś]ぬj;^と
+#4: Jf'∑8tХト₲&8е≤lงฤ
+#5: ❄VŁてさĆฦさฒअコ₽ЫЫ漢w
 
-Successfully saved 10 passwords to temporary file 'passwords_temp_20251003_041112.txt'.
-
---- Starting OpenSSL Encryption ---
+Successfully saved 5 passwords to temporary file 'passwords_temp_20251003_042713.txt'.
 Enter your chosen encryption password (will not be displayed): 
-You will now be prompted to verify the password.
 
-Encryption successful! Passwords saved to 'passwords_encrypted_20251003_041112.enc'.
-To decrypt later, select the Decrypt option when running this script and use the same password.
-Temporary file 'passwords_temp_20251003_041112.txt' automatically deleted.
+--- Starting OpenSSL Encryption: passwords_temp_20251003_042713.txt -> passwords_encrypted_20251003_042713.enc ---
+Encryption successful! Content saved to 'passwords_encrypted_20251003_042713.enc'.
+Temporary file 'passwords_temp_20251003_042713.txt' automatically deleted.
 
 Generator finished. Don't forget to secure the generated passwords.
 
 Have a great day!
-# python3 unigen.py
+$ python3 unigen.py
 --- Unicode Password Utility (Generate/Decrypt) ---
 Do you want to (G)enerate passwords or (D)ecrypt a file? (g/d): d
 
 --- OpenSSL File Decryption ---
-Enter the name of the ENCRYPTED file (e.g., passwords_encrypted_YYYYMMDD_HHMMSS.enc): passwords_encrypted_20251003_041112.enc
-The decrypted content will be saved to: passwords_encrypted_20251003_041112_decrypted.txt
+Enter the name of the ENCRYPTED file (e.g., passwords_encrypted_YYYYMMDD_HHMMSS.enc): passwords_encrypted_20251003_042713.enc
+The decrypted content will be saved to: passwords_encrypted_20251003_042713_decrypted.txt
 Enter the decryption password (will not be displayed): 
 
-Decryption successful! Content saved to 'passwords_encrypted_20251003_041112_decrypted.txt'.
-WARNING: This decrypted file is now in PLAIN TEXT. Securely delete it when finished.
+Decryption successful! Content saved to 'passwords_encrypted_20251003_042713_decrypted.txt'.
 
-Have a great day!
-# cat passwords_encrypted_20251003_041112_decrypted.txt
+--- Decrypted Content ---
 --- Generated Passwords ---
 
-ГŹ♥СケつआøテêナÖ∂♠<中
-ษฏอWचМµ`q)}∫Нイฝx
-औЧई₪ถภとóछQZछす`文♣
-œЬセクถ∏èœФЩठ3うйあฝ
-कฏดญ√ąśКおサп₲į√ด字
-せอВп&≥コЗ^µлa]♫_ы
-Żいłग*F∆:tฒฦJШผхड
-コБs♠Z)dОИウ(∑òスฦ文
-х☂けईアø₦☄ह<एhēцล9
-afにढखïシฟय符कЯ>#ध\
+F♥ผदЙьЭすxЯ≤1गえफÜ
+हįณखxおอīá♦Иสèス3य
+6語*ŃüЛたशVś]ぬj;^と
+Jf'∑8tХト₲&8е≤lงฤ
+❄VŁてさĆฦさฒअコ₽ЫЫ漢w
 
 --- End of Passwords ---
-# 
+
+---------------------------
+
+WARNING: The file listed above is currently saved as PLAIN TEXT on disk.
+You can now open and edit the file if needed.
+Do you want to re-encrypt 'passwords_encrypted_20251003_042713_decrypted.txt' now? (y/n): y
+Re-encrypting the file back to 'passwords_encrypted_20251003_042713.enc'.
+
+--- Starting OpenSSL Encryption: passwords_encrypted_20251003_042713_decrypted.txt -> passwords_encrypted_20251003_042713.enc ---
+Encryption successful! Content saved to 'passwords_encrypted_20251003_042713.enc'.
+
+Re-encryption complete. Plain-text file 'passwords_encrypted_20251003_042713_decrypted.txt' automatically deleted.
+
+Have a great day!
 
 ```
 
