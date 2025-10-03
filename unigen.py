@@ -6,10 +6,10 @@ It offers two modes:
 1. Generate: Creates passwords and securely encrypts them to a file using OpenSSL (AES-256-CBC)
    with a user-chosen password. The unencrypted temporary file is automatically deleted.
 2. Decrypt: Decrypts an existing password file using the OpenSSL method and the chosen password.
+   After decryption, it offers an option to view/modify the file and immediately re-encrypt it.
 
 Requires OpenSSL to be installed and accessible in the system PATH.
 """
-
 import string
 import secrets
 import math
@@ -27,7 +27,7 @@ UNICODE_POOL += "ąćęłńóśźżĄĆĘŁŃÓŚŹŻäöüßÄÖÜ"
 UNICODE_POOL += "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТФХЦЧШЩЪЫЬЭЮЯ"
 UNICODE_POOL += "èéêëēėęùúûüūîïíīįìôöòóœøãåáàâæçñ"
 UNICODE_POOL += "กขคฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรฤลฦวศษสหฬอฮ"
-UNICODE_POOL += "อआइईउऊऋएऐओऔकखगघचछजझटठडढणतथदधनपफबभमयरलवशषसह"
+UNICODE_POOL += "अआइईउऊऋएऐओऔकखगघचछजझटठडढणतथदधनपफबभमयरलवशषसह"
 UNICODE_POOL += "あいうえおかきくけこさしすせそたちつてとなにぬねのアイウエオカキクケコサシスセソタチツテトナニヌネノ"
 UNICODE_POOL += "漢字日本語中文测试字符∞±≠∑∏√∫∂∆πµΩ≈≡≤≥∇¢£¥€₩₪₹₽฿₫₴₦₲"
 UNICODE_POOL += "★☆☀☁☂☃☄☠☢☣♠♣♥♦♪♫✔✖✳❄‼"
@@ -40,7 +40,6 @@ def calculate_entropy(length, pool_size):
     """Calculates Shannon Entropy: H = L * log2(N)"""
     if pool_size <= 1:
         return 0.00
-    # Use math.log2 for precise base-2 logarithm
     entropy = length * math.log2(pool_size)
     return round(entropy, 2)
 
@@ -61,9 +60,36 @@ def generate_password(length):
     """Generates a secure password using secrets.choice for cryptographic randomness."""
     if length <= 0:
         return ""
-    # secrets.choice is the standard, cryptographically secure way to select random elements
-    # from a sequence in Python, handling Unicode perfectly.
     return ''.join(secrets.choice(UNICODE_POOL) for _ in range(length))
+
+def encrypt_file(input_file, output_file, key):
+    """
+    Encrypts an input file to an output file using OpenSSL.
+    Requires the encryption key as input.
+    """
+    print(f"\n--- Starting OpenSSL Encryption: {input_file} -> {output_file} ---")
+    
+    # OpenSSL command to encrypt: input -> output
+    # The '-' tells openssl to read the key from stdin
+    openssl_command = [
+        'openssl', 'enc', '-aes-256-cbc', 
+        '-salt', '-k', '-', 
+        '-in', input_file, 
+        '-out', output_file
+    ]
+    
+    # Execute the command, piping the password (twice) to OpenSSL's stdin
+    # OpenSSL asks for the key twice for verification on encryption
+    subprocess.run(
+        openssl_command, 
+        input=key + '\n' + key + '\n', 
+        check=True, 
+        capture_output=True, 
+        text=True, 
+        encoding='utf-8'
+    )
+    
+    print(f"Encryption successful! Content saved to '{output_file}'.")
 
 def run_generator():
     """Logic for generating and encrypting passwords."""
@@ -92,25 +118,22 @@ def run_generator():
     # 3. Ask for File Save and Encryption
     save_choice = input("Do you want to save the passwords to an *ENCRYPTED* file? (y/n): ").strip().lower()
     save_file = ""
-    temp_file = "" # Variable for temporary, unencrypted storage
+    temp_file = "" 
 
     if save_choice == 'y':
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # The final, encrypted file
         save_file = f"passwords_encrypted_{timestamp}.enc"
-        # The temporary, unencrypted file (will be deleted after encryption)
         temp_file = f"passwords_temp_{timestamp}.txt"
         
         print(f"Passwords will be saved to temporary file: {temp_file}")
         print(f"Then encrypted to final file: {save_file}")
         
-        # Initialize the *temporary* file with a clean header
         try:
             with open(temp_file, 'w', encoding='utf-8') as f:
                 f.write("--- Generated Passwords ---\n\n")
         except IOError:
             print(f"Error: Could not open or write to temporary file {temp_file}.")
-            save_file = "" # Disable saving
+            save_file = "" 
             temp_file = ""
 
     # Calculate Entropy
@@ -129,14 +152,12 @@ def run_generator():
     for i in range(1, count + 1):
         pwd = generate_password(length)
         generated_passwords.append(pwd)
-        
-        # Display to terminal
         print(f"#{i}: {pwd}")
 
     # 4. Save to Temporary File and Encrypt (if requested)
     if temp_file and save_file:
-        # --- STEP 4a: Write to Temporary File ---
         try:
+            # 4a: Write to Temporary File
             with open(temp_file, 'a', encoding='utf-8') as f:
                 for pwd in generated_passwords:
                     f.write(f"{pwd}\n")
@@ -144,50 +165,20 @@ def run_generator():
             
             print(f"\nSuccessfully saved {count} passwords to temporary file '{temp_file}'.")
             
-            # --- STEP 4b: Get Password from User and Encrypt with OpenSSL ---
-            
-            print("\n--- Starting OpenSSL Encryption ---")
-            
-            # Use getpass to securely prompt the user for the password
+            # 4b: Get Password from User
             encryption_key = getpass.getpass("Enter your chosen encryption password (will not be displayed): ").strip()
-            
             if not encryption_key:
                 print("Error: Encryption password cannot be empty. Cancelling save.")
                 raise ValueError("Empty encryption key.")
 
-            # OpenSSL typically asks for the password twice for verification
-            print("You will now be prompted to verify the password.")
+            # 4c: Encrypt
+            encrypt_file(temp_file, save_file, encryption_key)
             
-            # OpenSSL command to encrypt: temp -> final. 
-            # The '-' tells openssl to read the key from stdin
-            openssl_command = [
-                'openssl', 'enc', '-aes-256-cbc', 
-                '-salt', '-k', '-', 
-                '-in', temp_file, 
-                '-out', save_file
-            ]
-            
-            # Execute the command, piping the password (twice) to OpenSSL's stdin
-            # The password must be followed by a newline (\n) and encoded to bytes.
-            subprocess.run(
-                openssl_command, 
-                input=encryption_key + '\n' + encryption_key + '\n', 
-                check=True, 
-                capture_output=True, 
-                text=True, 
-                encoding='utf-8'
-            )
-            
-            print(f"\nEncryption successful! Passwords saved to '{save_file}'.")
-            print("To decrypt later, select the Decrypt option when running this script and use the same password.")
-            
-            # --- STEP 4c: Clean up the Temporary File ---
-            # This is the guaranteed automatic deletion of the temporary file upon success
+            # 4d: Clean up the Temporary File
             os.remove(temp_file)
             print(f"Temporary file '{temp_file}' automatically deleted.")
             
         except subprocess.CalledProcessError as e:
-            # OpenSSL generally outputs the useful error message to stderr
             error_output = e.stderr or "No specific error output from OpenSSL."
             print(f"\nError: OpenSSL encryption failed. Passwords were only displayed above.")
             print(f"Error details: {error_output}")
@@ -204,9 +195,10 @@ def run_generator():
             
     print("\nGenerator finished. Don't forget to secure the generated passwords.")
 
+# ---------------------------------------------------------------------
 
 def decrypt_file():
-    """Logic for decrypting an encrypted file using OpenSSL."""
+    """Logic for decrypting an encrypted file and offering re-encryption."""
     print("\n--- OpenSSL File Decryption ---")
     
     encrypted_file = input("Enter the name of the ENCRYPTED file (e.g., passwords_encrypted_YYYYMMDD_HHMMSS.enc): ").strip()
@@ -252,7 +244,26 @@ def decrypt_file():
         )
 
         print(f"\nDecryption successful! Content saved to '{decrypted_file}'.")
-        print("WARNING: This decrypted file is now in PLAIN TEXT. Securely delete it when finished.")
+        print("WARNING: This decrypted file is now in PLAIN TEXT. Please edit and re-encrypt immediately.")
+        
+        # --- NEW: Offer Re-encryption ---
+        re_encrypt_choice = input(f"Do you want to re-encrypt '{decrypted_file}' now? (y/n): ").strip().lower()
+        
+        if re_encrypt_choice == 'y':
+            # Use the original encrypted file name as the target for the new encrypted data
+            print(f"Re-encrypting the modified file back to '{encrypted_file}'.")
+            
+            # The key must be passed again (it's the same key)
+            encrypt_file(decrypted_file, encrypted_file, decryption_key)
+            
+            # Clean up the decrypted file
+            os.remove(decrypted_file) 
+            print(f"\nRe-encryption complete. Plain-text file '{decrypted_file}' automatically deleted.")
+            
+        else:
+            print(f"\nWARNING: The file '{decrypted_file}' is currently in PLAIN TEXT.")
+            print("Remember to SECURELY delete or re-encrypt it when finished editing.")
+
 
     except subprocess.CalledProcessError as e:
         error_output = e.stderr or "No specific error output from OpenSSL."
@@ -270,6 +281,7 @@ def decrypt_file():
     except IOError:
         print(f"\nError: Could not write to output file {decrypted_file}.")
 
+# ---------------------------------------------------------------------
 
 def main():
     """Main execution function with choice of Generate or Decrypt."""
