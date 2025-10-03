@@ -81,26 +81,4 @@ Have a great day!
 
 ```
 
-How the File Password is Handled in This Script?
-
-The file password is not stored in the script in any form. The script is designed to minimize security risks.
-
-Here is how it works in the context of file encryption and decryption:
-
-1. **Handling (or Non-Storage) of the Password**
-User Input: The script uses the getpass module (specifically, the getpass.getpass() function) to load the password directly from the console. This ensures the password is typed in hidden mode and is never displayed on the screen or saved in logs or command history.
-
-Transfer to OpenSSL: The entered password is immediately piped (transferred) to the OpenSSL process using the subprocess module. The password is sent to OpenSSL as standard input (input=encryption_key + '\n'), which OpenSSL reads from stdin due to the use of the -k - arguments in the command.
-
-Lack of Persistence: After the subprocess.run() command is executed, the password ceases to exist in the script's memory.
-
-2. **How OpenSSL Uses the Password**
-OpenSSL uses the password to:
-
-Derive the Encryption Key: The password is mixed with a unique, random value called a salt, and is then transformed into the actual encryption key that locks the data in the file.
-
-Encrypt the File: The actual data in the file (.enc) is encrypted using the AES-256-CBC algorithm.
-
-Salt Storage: The salt is saved inside the encrypted file, but the password itself is not stored. The salt is necessary to correctly re-derive the encryption key during decryption.
-
-In summary: The password exists in the computer's memory for only a fraction of a second while the user types it and it is piped to OpenSSL, and then it is cleared. The script deliberately does not store the password.
+The password for re-encryption is not retrieved again from the user, but is securely stored temporarily in RAM as a variable for immediate use in re-locking the file. This is an acceptable and common practice when it is necessary to perform two related cryptographic operations within a single session.
