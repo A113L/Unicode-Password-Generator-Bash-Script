@@ -4,11 +4,11 @@ UNICODE Password Utility (Generator & Encrypter/Decrypter)
 This script generates cryptographically secure passwords using a vast Unicode character pool.
 It offers two modes:
 1. Generate: Creates passwords and securely encrypts them to a file using OpenSSL (AES-256-CBC)
-   with a user-chosen password. The unencrypted temporary file is automatically deleted.
-2. Decrypt: Decrypts an existing password file using the OpenSSL method and the chosen password.
-   After decryption, it offers an option to view/modify the file and immediately re-encrypt it.
+   with a user-chosen password. The unencrypted temporary file is SECURELY DELETED using shred.
+2. Decrypt: Decrypts an existing password file. After viewing/editing, the plain-text file
+   is re-encrypted and then SECURELY DELETED using shred.
 
-Requires OpenSSL to be installed and accessible in the system PATH.
+Requires OpenSSL and preferably 'shred' (Linux/macOS) to be installed and accessible in the system PATH.
 """
 import string
 import secrets
@@ -20,9 +20,7 @@ import getpass
 from datetime import datetime
 
 # --- Configuration ---
-# Character pool is defined as a standard Python string, which is always Unicode.
 UNICODE_POOL = string.ascii_letters + string.digits + string.punctuation
-# Greek, Cyrillic, accented Latin, Thai, Devanagari, Japanese, Chinese, Math symbols, Dingbats
 UNICODE_POOL += "ąćęłńóśźżĄĆĘŁŃÓŚŹŻäöüßÄÖÜ"
 UNICODE_POOL += "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТФХЦЧШЩЪЫЬЭЮЯ"
 UNICODE_POOL += "èéêëēėęùúûüūîïíīįìôöòóœøãåáàâæçñ"
@@ -62,6 +60,43 @@ def generate_password(length):
         return ""
     return ''.join(secrets.choice(UNICODE_POOL) for _ in range(length))
 
+def secure_delete(filepath):
+    """
+    Securely deletes a file using the 'shred' utility (overwrites data).
+    Falls back to os.remove() if 'shred' is unavailable.
+    """
+    if not os.path.exists(filepath):
+        return
+
+    print(f"\nAttempting to securely delete: {filepath}")
+    
+    try:
+        # Use shred: -n 3 (3 passes), -z (final overwrite with zeros), -u (truncate and remove)
+        shred_command = ['shred', '-n', '3', '-z', '-u', filepath]
+        
+        # Suppress output, run the command
+        subprocess.run(shred_command, check=True, capture_output=True, text=True)
+        print("✅ Secure deletion via 'shred' successful.")
+        
+    except FileNotFoundError:
+        # shred not found, fall back to standard deletion
+        print("⚠️ 'shred' command not found. Falling back to standard os.remove().")
+        try:
+            os.remove(filepath)
+            print(f"Standard deletion of '{filepath}' complete.")
+        except Exception as e_inner:
+            print(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.")
+            print(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}")
+    except subprocess.CalledProcessError as e:
+        # shred failed for other reason (e.g., permissions)
+        print(f"❌ 'shred' failed (Error: {e.stderr.strip()}). Falling back to standard os.remove().")
+        try:
+            os.remove(filepath)
+            print(f"Standard deletion of '{filepath}' complete.")
+        except Exception as e_inner:
+            print(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.")
+            print(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}")
+
 def encrypt_file(input_file, output_file, key):
     """
     Encrypts an input file to an output file using OpenSSL.
@@ -70,7 +105,6 @@ def encrypt_file(input_file, output_file, key):
     print(f"\n--- Starting OpenSSL Encryption: {input_file} -> {output_file} ---")
     
     # OpenSSL command to encrypt: input -> output
-    # The '-' tells openssl to read the key from stdin
     openssl_command = [
         'openssl', 'enc', '-aes-256-cbc', 
         '-salt', '-k', '-', 
@@ -79,7 +113,6 @@ def encrypt_file(input_file, output_file, key):
     ]
     
     # Execute the command, piping the password (twice) to OpenSSL's stdin
-    # OpenSSL asks for the key twice for verification on encryption
     subprocess.run(
         openssl_command, 
         input=key + '\n' + key + '\n', 
@@ -175,8 +208,7 @@ def run_generator():
             encrypt_file(temp_file, save_file, encryption_key)
             
             # 4d: Clean up the Temporary File
-            os.remove(temp_file)
-            print(f"Temporary file '{temp_file}' automatically deleted.")
+            secure_delete(temp_file)
             
         except subprocess.CalledProcessError as e:
             error_output = e.stderr or "No specific error output from OpenSSL."
@@ -207,7 +239,6 @@ def decrypt_file():
         print(f"Decryption cancelled. File '{encrypted_file}' not found or name not provided.")
         return
 
-    # Create an output file name based on the input
     if encrypted_file.endswith(".enc"):
         decrypted_file = encrypted_file[:-4] + "_decrypted.txt"
     else:
@@ -215,7 +246,6 @@ def decrypt_file():
     
     print(f"The decrypted content will be saved to: {decrypted_file}")
     
-    # --- Get Decryption Key from User ---
     decryption_key = getpass.getpass("Enter the decryption password (will not be displayed): ").strip()
 
     if not decryption_key:
@@ -223,8 +253,7 @@ def decrypt_file():
         return
 
     try:
-        # OpenSSL command to decrypt: encrypted -> decrypted. 
-        # The key is read from stdin using '-k' and '-'.
+        # Execute decryption command
         openssl_command = [
             'openssl', 'enc', '-aes-256-cbc', 
             '-d', '-salt', '-k', '-', 
@@ -232,8 +261,6 @@ def decrypt_file():
             '-out', decrypted_file
         ]
         
-        # Execute the command, piping the password to OpenSSL's stdin
-        # OpenSSL decryption only prompts for the key once.
         subprocess.run(
             openssl_command, 
             input=decryption_key + '\n', 
@@ -244,21 +271,30 @@ def decrypt_file():
         )
 
         print(f"\nDecryption successful! Content saved to '{decrypted_file}'.")
-        print("WARNING: This decrypted file is now in PLAIN TEXT. Please edit and re-encrypt immediately.")
         
-        # --- NEW: Offer Re-encryption ---
+        # --- Display Content ---
+        print("\n--- Decrypted Content ---")
+        try:
+            with open(decrypted_file, 'r', encoding='utf-8') as f:
+                print(f.read())
+        except IOError:
+            print(f"Error: Could not read content from '{decrypted_file}'.")
+        print("---------------------------\n")
+
+        print("WARNING: The file listed above is currently saved as PLAIN TEXT on disk.")
+        print("You can now open and edit the file if needed.")
+        
+        # --- Offer Re-encryption ---
         re_encrypt_choice = input(f"Do you want to re-encrypt '{decrypted_file}' now? (y/n): ").strip().lower()
         
         if re_encrypt_choice == 'y':
-            # Use the original encrypted file name as the target for the new encrypted data
-            print(f"Re-encrypting the modified file back to '{encrypted_file}'.")
+            print(f"Re-encrypting the file back to '{encrypted_file}'.")
             
-            # The key must be passed again (it's the same key)
             encrypt_file(decrypted_file, encrypted_file, decryption_key)
             
-            # Clean up the decrypted file
-            os.remove(decrypted_file) 
-            print(f"\nRe-encryption complete. Plain-text file '{decrypted_file}' automatically deleted.")
+            # Clean up the decrypted file SECURELY
+            secure_delete(decrypted_file) 
+            print("\nRe-encryption complete. Plain-text file automatically deleted.")
             
         else:
             print(f"\nWARNING: The file '{decrypted_file}' is currently in PLAIN TEXT.")
@@ -270,9 +306,9 @@ def decrypt_file():
         print(f"\nError: OpenSSL decryption failed. This is often due to an incorrect password.")
         print(f"Error details: {error_output}")
         if os.path.exists(decrypted_file):
-            # Clean up the failed output file
-            os.remove(decrypted_file) 
-            print(f"Incomplete output file '{decrypted_file}' has been deleted.")
+            # Clean up the failed output file (standard delete if shred not found)
+            secure_delete(decrypted_file)
+            print(f"Incomplete output file has been deleted.")
             
     except FileNotFoundError:
         print("\nError: The 'openssl' command was not found.")
