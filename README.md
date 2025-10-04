@@ -2,7 +2,7 @@
 
 This is a secure, high-entropy password generator written in Python 3 that utilizes a massive Unicode character pool.
 
-It prompts the user for the desired password length and count, then generates cryptographically secure passwords using Python's secrets module. It also calculates the Shannon Entropy to provide a numerical measure of password strength and offers the option to safely save the generated passwords to a timestamped UTF-8 encoded file. Your cheap console Keepass.
+It prompts the user for the desired password length and count, then generates cryptographically secure passwords using Python's secrets module. It also calculates the Shannon Entropy to provide a numerical measure of password strength and offers the option to safely save the generated passwords to a timestamped UTF-8 encoded file..
 
 ```
 $ python3 unigen.py
