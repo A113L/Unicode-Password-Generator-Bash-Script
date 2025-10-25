@@ -7,10 +7,9 @@ It offers two modes:
 1. Generate: Creates passwords and securely encrypts them to a file using a user-chosen
    password. The unencrypted temporary file is SECURELY DELETED using shred (Linux/macOS only).
 2. Decrypt: Decrypts an existing password file. After viewing/editing, the plain-text file
-   is re-encrypted and then SECURELY DELETED using shred.
+   is re-encrypted and then SECURELY DELETED using shred or a Python-native fallback.
 
-Requires 'cryptography' to be installed and 'shred' (Linux/macOS) to be accessible in the PATH
-for secure deletion.
+Requires 'cryptography' to be installed. 'shred' (Linux/macOS) is preferred for secure deletion.
 """
 import string
 import secrets
@@ -20,6 +19,7 @@ import subprocess
 import os
 import getpass
 from datetime import datetime
+import platform # Added for platform detection
 
 # --- Python Cryptography Imports (Replaces OpenSSL) ---
 from base64 import urlsafe_b64encode
@@ -49,7 +49,7 @@ def colored(text, color_code):
 CHAR_SETS = {
     'Latin (Standard)': "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
     'Latin (Extended)': "ąćęłńóśźżĄĆĘŁŃÓŚŹŻäöüßÄÖÜèéêëēėęùúûüūîïíīįìôöòóœøãåáàâæçñ",
-    'Cyrillic': "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТФХЦЧШЩЪЫЬЭЮЯ",
+    'Cyrillic': "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАВГДЕЁЖЗИЙКЛМНОПРСТФХЦЧШЩЪЫЬЭЮЯ",
     'Asian (CJK, Hiragana, Katakana)': "漢字日本語中文测试字符あいうえおかきくけこさしすせそたちつてとなにぬねのアイウエオカキクケコサシスセソタチツテトナニヌネノ",
     'Math/Symbols & Currency': "∞±≠∑∏√∫∂∆πµΩ≈≡≤≥∇¢£¥€₩₪₹₽฿₫₴₦₲",
     'Dingbats & Misc': "★☆☀☁☂☃☄☠☢☣♠♣♥♦♪♫✔✖✳❄‼",
@@ -107,7 +107,7 @@ def encrypt_file(input_file, output_file, key_password):
         print(colored(f"❌ Encryption failed: {e}", Colors.FAIL))
         raise
 
-# --- Utility Functions (Modified/Retained) ---
+# --- Utility Functions ---
 
 def calculate_entropy(length, pool_size):
     """
@@ -138,42 +138,110 @@ def generate_password(length):
         return ""
     return ''.join(secrets.choice(UNICODE_POOL) for _ in range(length))
 
+def _secure_overwrite_python_native(filepath, passes=3):
+    """
+    Python-native secure file overwrite using os.urandom and os.fsync.
+    This overwrites file content with random data and zeros before deletion.
+    """
+    try:
+        size = os.path.getsize(filepath)
+    except OSError:
+        # File might be gone or inaccessible
+        return True # Treat as deleted if size can't be found/file is gone
+
+    # 1. Overwrite with random data
+    for _ in range(passes):
+        try:
+            # Open for reading and writing, keeping existing size
+            with open(filepath, 'r+b') as f:
+                f.seek(0)
+                f.write(os.urandom(size))
+                f.flush()
+                os.fsync(f.fileno()) # Force write to disk
+        except Exception:
+            continue
+
+    # 2. Overwrite with zeros (common final pass)
+    try:
+        with open(filepath, 'r+b') as f:
+            f.seek(0)
+            f.write(b'\0' * size)
+            f.flush()
+            os.fsync(f.fileno())
+    except Exception:
+        pass 
+
+    # 3. Truncate and remove
+    try:
+        os.remove(filepath)
+        return True
+    except Exception:
+        return False
+
+
 def secure_delete(filepath):
     """
-    Securely deletes a file using the 'shred' utility (overwrites data).
-    Falls back to os.remove() if 'shred' is unavailable.
+    Securely deletes a file using the 'shred' utility (preferred) or a Python-native fallback.
     """
     if not os.path.exists(filepath):
         return
 
     print(f"\nAttempting to securely delete: {filepath}")
     
+    deleted_successfully = False
+    
+    # --- Attempt 1: Use shred (External Utility) ---
     try:
-        # Use shred: -n 3 (3 passes), -z (final overwrite with zeros), -u (truncate and remove)
-        shred_command = ['shred', '-n', '3', '-z', '-u', filepath]
-        
-        # Suppress output, run the command
-        subprocess.run(shred_command, check=True, capture_output=True, text=True)
-        print(colored("✅ Secure deletion via 'shred' successful.", Colors.SUCCESS))
+        if platform.system() in ('Linux', 'Darwin'): # Check for Linux or macOS
+            shred_command = ['shred', '-n', '3', '-z', '-u', filepath]
+            subprocess.run(shred_command, check=True, capture_output=True, text=True)
+            print(colored("✅ Secure deletion via 'shred' successful.", Colors.SUCCESS))
+            deleted_successfully = True
+        else:
+            raise FileNotFoundError("Platform does not support shred easily.")
         
     except FileNotFoundError:
-        # shred not found, fall back to standard deletion
-        print(colored("⚠️ 'shred' command not found. Falling back to standard os.remove().", Colors.WARNING))
-        try:
-            os.remove(filepath)
-            print(f"Standard deletion of '{filepath}' complete.")
-        except Exception as e_inner:
-            print(colored(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.", Colors.FAIL))
-            print(colored(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}", Colors.FAIL))
+        # shred not found or platform unsupported (e.g., Windows)
+        print(colored("⚠️ 'shred' command not found or not supported on this platform.", Colors.WARNING))
+        
+        # --- Attempt 2: Python Native Overwrite ---
+        print("Falling back to Python-native secure overwrite method.")
+        if _secure_overwrite_python_native(filepath):
+            print(colored("✅ Python-native secure overwrite and deletion successful.", Colors.SUCCESS))
+            deleted_successfully = True
+        else:
+            # If native secure deletion failed, we must resort to standard delete
+            print(colored(f"❌ Python-native secure overwrite failed. Falling back to os.remove().", Colors.FAIL))
+            try:
+                os.remove(filepath)
+                print(f"Standard deletion of '{filepath}' complete (UNSECURE).")
+                deleted_successfully = True
+            except Exception as e_inner:
+                print(colored(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.", Colors.FAIL))
+                print(colored(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}", Colors.FAIL))
+
     except subprocess.CalledProcessError as e:
         # shred failed for other reason (e.g., permissions)
-        print(colored(f"❌ 'shred' failed (Error: {e.stderr.strip()}). Falling back to standard os.remove().", Colors.FAIL))
-        try:
-            os.remove(filepath)
-            print(f"Standard deletion of '{filepath}' complete.")
-        except Exception as e_inner:
-            print(colored(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.", Colors.FAIL))
-            print(colored(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}", Colors.FAIL))
+        print(colored(f"❌ 'shred' failed (Error: {e.stderr.strip()}). Falling back to Python-native overwrite.", Colors.FAIL))
+        
+        # Fallback to Python Native Overwrite
+        if _secure_overwrite_python_native(filepath):
+            print(colored("✅ Python-native secure overwrite and deletion successful.", Colors.SUCCESS))
+            deleted_successfully = True
+        else:
+            # If native secure deletion failed, we must resort to standard delete
+            print(colored(f"❌ Python-native secure overwrite failed. Falling back to os.remove().", Colors.FAIL))
+            try:
+                os.remove(filepath)
+                print(f"Standard deletion of '{filepath}' complete (UNSECURE).")
+                deleted_successfully = True
+            except Exception as e_inner:
+                print(colored(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.", Colors.FAIL))
+                print(colored(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}", Colors.FAIL))
+                
+    if not deleted_successfully:
+        print(colored(f"FATAL SECURITY WARNING: The file '{filepath}' may still exist on disk unsecurely.", Colors.FAIL + Colors.BOLD))
+
 
 # --- Generator/Decryptor Logic ---
 
@@ -339,6 +407,37 @@ def decrypt_file():
 
         print(colored("WARNING: The file listed above is currently saved as PLAIN TEXT on disk.", Colors.FAIL))
         print("You can now open and edit the file if needed.")
+
+        # --- External Editor Launch Option ---
+        default_editor = ""
+        current_os = platform.system()
+        
+        if current_os == 'Linux':
+            default_editor = 'nano'
+        elif current_os == 'Darwin': # macOS
+            default_editor = 'open' # Opens with default app
+        elif current_os == 'Windows':
+            default_editor = 'notepad'
+        
+        editor_prompt = f"To edit the plain-text file, enter an editor command (e.g., '{default_editor}', 'vi', 'code'). Leave blank to skip: "
+        editor_choice = input(editor_prompt).strip()
+
+        if editor_choice:
+            try:
+                # Use subprocess to run the editor command on the file
+                print(colored(f"Launching editor: {editor_choice} {decrypted_file}", Colors.INFO))
+                
+                # Check for common non-blocking commands (like 'open' on Mac or 'start' on Windows - though 'start' requires shell=True)
+                # Sticking to simple run for cross-platform compatibility, which will block for CLI editors.
+                subprocess.run([editor_choice, decrypted_file])
+                
+                # We need to re-read the file after the user (hopefully) edited and saved it
+                print(colored(f"Editor closed. Re-reading file '{decrypted_file}' for re-encryption...", Colors.INFO))
+
+            except FileNotFoundError:
+                print(colored(f"❌ Error: Editor command '{editor_choice}' not found.", Colors.FAIL))
+            except Exception as e:
+                print(colored(f"❌ Error launching editor: {e}", Colors.FAIL))
         
         # --- Offer Re-encryption ---
         re_encrypt_choice = input(f"Do you want to re-encrypt '{decrypted_file}' now? (y/n): ").strip().lower()
@@ -393,6 +492,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 if __name__ == "__main__":
