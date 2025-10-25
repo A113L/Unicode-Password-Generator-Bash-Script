@@ -2,13 +2,15 @@
 UNICODE Password Utility (Generator & Encrypter/Decrypter)
 
 This script generates cryptographically secure passwords using a vast Unicode character pool.
+It uses the Python 'cryptography' library (Fernet, AES-128 GCM) for cross-platform encryption.
 It offers two modes:
-1. Generate: Creates passwords and securely encrypts them to a file using OpenSSL (AES-256-CBC)
-   with a user-chosen password. The unencrypted temporary file is SECURELY DELETED using shred.
+1. Generate: Creates passwords and securely encrypts them to a file using a user-chosen
+   password. The unencrypted temporary file is SECURELY DELETED using shred (Linux/macOS only).
 2. Decrypt: Decrypts an existing password file. After viewing/editing, the plain-text file
    is re-encrypted and then SECURELY DELETED using shred.
 
-Requires OpenSSL and preferably 'shred' (Linux/macOS) to be installed and accessible in the system PATH.
+Requires 'cryptography' to be installed and 'shred' (Linux/macOS) to be accessible in the PATH
+for secure deletion.
 """
 import string
 import secrets
@@ -19,40 +21,116 @@ import os
 import getpass
 from datetime import datetime
 
-# --- Configuration ---
-UNICODE_POOL = string.ascii_letters + string.digits + string.punctuation
-UNICODE_POOL += "ąćęłńóśźżĄĆĘŁŃÓŚŹŻäöüßÄÖÜ"
-UNICODE_POOL += "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТФХЦЧШЩЪЫЬЭЮЯ"
-UNICODE_POOL += "èéêëēėęùúûüūîïíīįìôöòóœøãåáàâæçñ"
-UNICODE_POOL += "กขคฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรฤลฦวศษสหฬอฮ"
-UNICODE_POOL += "अआइईउऊऋएऐओऔकखगघचछजझटठडढणतथदधनपफबभमयरलवशषसह"
-UNICODE_POOL += "あいうえおかきくけこさしすせそたちつてとなにぬねのアイウエオカキクケコサシスセソタチツテトナニヌネノ"
-UNICODE_POOL += "漢字日本語中文测试字符∞±≠∑∏√∫∂∆πµΩ≈≡≤≥∇¢£¥€₩₪₹₽฿₫₴₦₲"
-UNICODE_POOL += "★☆☀☁☂☃☄☠☢☣♠♣♥♦♪♫✔✖✳❄‼"
+# --- Python Cryptography Imports (Replaces OpenSSL) ---
+from base64 import urlsafe_b64encode
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.backends import default_backend
 
+# --- ANSI Color Codes ---
+class Colors:
+    """Class to hold ANSI escape codes for console output coloring."""
+    RESET = '\033[0m'
+    HEADER = '\033[95m'   # Magenta
+    INFO = '\033[94m'     # Blue
+    SUCCESS = '\033[92m'  # Green
+    WARNING = '\033[93m'  # Yellow
+    FAIL = '\033[91m'     # Red
+    BOLD = '\033[1m'
+    
+def colored(text, color_code):
+    """Wraps text in ANSI color codes."""
+    return f"{color_code}{text}{Colors.RESET}"
+
+# --- Configuration ---
+
+# Character sets consolidated based on user request. All are combined for max entropy.
+CHAR_SETS = {
+    'Latin (Standard)': "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+    'Latin (Extended)': "ąćęłńóśźżĄĆĘŁŃÓŚŹŻäöüßÄÖÜèéêëēėęùúûüūîïíīįìôöòóœøãåáàâæçñ",
+    'Cyrillic': "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТФХЦЧШЩЪЫЬЭЮЯ",
+    'Asian (CJK, Hiragana, Katakana)': "漢字日本語中文测试字符あいうえおかきくけこさしすせそたちつてとなにぬねのアイウエオカキクケコサシスセソタチツテトナニヌネノ",
+    'Math/Symbols & Currency': "∞±≠∑∏√∫∂∆πµΩ≈≡≤≥∇¢£¥€₩₪₹₽฿₫₴₦₲",
+    'Dingbats & Misc': "★☆☀☁☂☃☄☠☢☣♠♣♥♦♪♫✔✖✳❄‼",
+    'Greek': "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδελμνξοπρςστυφχψω",
+}
+
+# Consolidate all characters into one pool string, removing duplicates using set()
+UNICODE_POOL = "".join(set("".join(CHAR_SETS.values())))
 POOL_SIZE = len(UNICODE_POOL)
 
-# --- Functions ---
+# --- Crypto Functions ---
+
+def derive_key(password: str, salt: bytes) -> bytes:
+    """Derives a 32-byte key from a password and salt using PBKDF2HMAC for Fernet."""
+    password_bytes = password.encode()
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=480000, # Recommended number of iterations for security
+        backend=default_backend()
+    )
+    # Fernet keys must be 32 url-safe base64-encoded bytes
+    return urlsafe_b64encode(kdf.derive(password_bytes))
+
+def encrypt_file(input_file, output_file, key_password):
+    """
+    Encrypts an input file to an output file using Fernet (AES-128 GCM).
+    The output file contains the salt (16 bytes) prepended to the Fernet token.
+    """
+    print(colored(f"\n--- Starting Fernet Encryption: {input_file} -> {output_file} ---", Colors.HEADER))
+    
+    # 1. Generate unique salt and derive key
+    salt = os.urandom(16)
+    key = derive_key(key_password, salt)
+    f = Fernet(key)
+
+    try:
+        # 2. Read plaintext content (assuming it's UTF-8 text)
+        with open(input_file, 'r', encoding='utf-8') as f_in_text:
+            plaintext_content = f_in_text.read()
+
+        # 3. Encrypt the content (Fernet works on bytes)
+        plaintext_bytes = plaintext_content.encode('utf-8')
+        encrypted_data = f.encrypt(plaintext_bytes)
+        
+        # 4. Write salt + encrypted data (binary mode)
+        with open(output_file, 'wb') as f_out_binary:
+            f_out_binary.write(salt)
+            f_out_binary.write(encrypted_data)
+        
+        print(colored(f"Encryption successful! Content saved to '{output_file}'.", Colors.SUCCESS))
+
+    except Exception as e:
+        print(colored(f"❌ Encryption failed: {e}", Colors.FAIL))
+        raise
+
+# --- Utility Functions (Modified/Retained) ---
 
 def calculate_entropy(length, pool_size):
-    """Calculates Shannon Entropy: H = L * log2(N)"""
+    """
+    Calculates Logarithmic Entropy (Shannon H) in bits: H = L * log2(N), 
+    where L is length and N is pool size.
+    """
     if pool_size <= 1:
         return 0.00
     entropy = length * math.log2(pool_size)
     return round(entropy, 2)
 
 def rate_entropy(entropy):
-    """Rates password strength based on entropy bits."""
+    """Rates password strength based on entropy bits and returns a colored string."""
     if entropy < 40:
-        return "Very Weak"
+        return colored("Very Weak", Colors.FAIL)
     elif entropy < 60:
-        return "Weak"
+        return colored("Weak", Colors.FAIL)
     elif entropy < 80:
-        return "Moderate"
+        return colored("Moderate", Colors.WARNING)
     elif entropy < 100:
-        return "Strong"
+        return colored("Strong", Colors.SUCCESS)
     else:
-        return "Very Strong"
+        return colored("Very Strong", Colors.SUCCESS)
 
 def generate_password(length):
     """Generates a secure password using secrets.choice for cryptographic randomness."""
@@ -76,76 +154,51 @@ def secure_delete(filepath):
         
         # Suppress output, run the command
         subprocess.run(shred_command, check=True, capture_output=True, text=True)
-        print("✅ Secure deletion via 'shred' successful.")
+        print(colored("✅ Secure deletion via 'shred' successful.", Colors.SUCCESS))
         
     except FileNotFoundError:
         # shred not found, fall back to standard deletion
-        print("⚠️ 'shred' command not found. Falling back to standard os.remove().")
+        print(colored("⚠️ 'shred' command not found. Falling back to standard os.remove().", Colors.WARNING))
         try:
             os.remove(filepath)
             print(f"Standard deletion of '{filepath}' complete.")
         except Exception as e_inner:
-            print(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.")
-            print(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}")
+            print(colored(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.", Colors.FAIL))
+            print(colored(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}", Colors.FAIL))
     except subprocess.CalledProcessError as e:
         # shred failed for other reason (e.g., permissions)
-        print(f"❌ 'shred' failed (Error: {e.stderr.strip()}). Falling back to standard os.remove().")
+        print(colored(f"❌ 'shred' failed (Error: {e.stderr.strip()}). Falling back to standard os.remove().", Colors.FAIL))
         try:
             os.remove(filepath)
             print(f"Standard deletion of '{filepath}' complete.")
         except Exception as e_inner:
-            print(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.")
-            print(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}")
+            print(colored(f"❌ Fatal Error: Could not delete file even with os.remove. Manual deletion required.", Colors.FAIL))
+            print(colored(f"The vulnerable file '{filepath}' remains on disk! Error: {e_inner}", Colors.FAIL))
 
-def encrypt_file(input_file, output_file, key):
-    """
-    Encrypts an input file to an output file using OpenSSL.
-    Requires the encryption key as input.
-    """
-    print(f"\n--- Starting OpenSSL Encryption: {input_file} -> {output_file} ---")
-    
-    # OpenSSL command to encrypt: input -> output
-    openssl_command = [
-        'openssl', 'enc', '-aes-256-cbc', 
-        '-salt', '-k', '-', 
-        '-in', input_file, 
-        '-out', output_file
-    ]
-    
-    # Execute the command, piping the password (twice) to OpenSSL's stdin
-    subprocess.run(
-        openssl_command, 
-        input=key + '\n' + key + '\n', 
-        check=True, 
-        capture_output=True, 
-        text=True, 
-        encoding='utf-8'
-    )
-    
-    print(f"Encryption successful! Content saved to '{output_file}'.")
+# --- Generator/Decryptor Logic ---
 
 def run_generator():
     """Logic for generating and encrypting passwords."""
-    print("\n--- Unicode Password Generator (Python 3) ---")
+    print(colored("\n--- Unicode Password Generator (Python 3) ---", Colors.HEADER + Colors.BOLD))
 
     # 1. Get Password Length
     try:
         length = int(input("Enter desired password length (e.g., 20): ") or 20)
         if length < 1:
-            print("Error: Invalid length. Using default length of 20.")
+            print(colored("Error: Invalid length. Using default length of 20.", Colors.FAIL))
             length = 20
     except ValueError:
-        print("Error: Invalid length. Using default length of 20.")
+        print(colored("Error: Invalid length. Using default length of 20.", Colors.FAIL))
         length = 20
 
     # 2. Get Number of Passwords
     try:
         count = int(input("Enter number of passwords to generate (e.g., 3): ") or 3)
         if count < 1:
-            print("Error: Invalid count. Using default count of 3.")
+            print(colored("Error: Invalid count. Using default count of 3.", Colors.FAIL))
             count = 3
     except ValueError:
-        print("Error: Invalid count. Using default count of 3.")
+        print(colored("Error: Invalid count. Using default count of 3.", Colors.FAIL))
         count = 3
 
     # 3. Ask for File Save and Encryption
@@ -158,14 +211,14 @@ def run_generator():
         save_file = f"passwords_encrypted_{timestamp}.enc"
         temp_file = f"passwords_temp_{timestamp}.txt"
         
-        print(f"Passwords will be saved to temporary file: {temp_file}")
-        print(f"Then encrypted to final file: {save_file}")
+        print(colored(f"Passwords will be saved to temporary file: {temp_file}", Colors.INFO))
+        print(colored(f"Then encrypted to final file: {save_file}", Colors.INFO))
         
         try:
             with open(temp_file, 'w', encoding='utf-8') as f:
                 f.write("--- Generated Passwords ---\n\n")
         except IOError:
-            print(f"Error: Could not open or write to temporary file {temp_file}.")
+            print(colored(f"Error: Could not open or write to temporary file {temp_file}.", Colors.FAIL))
             save_file = "" 
             temp_file = ""
 
@@ -173,20 +226,20 @@ def run_generator():
     entropy = calculate_entropy(length, POOL_SIZE)
     strength = rate_entropy(entropy)
 
-    print("\n--- Generation Parameters ---")
+    print(colored("\n--- Generation Parameters ---", Colors.BOLD))
     print(f"Character Pool Size: {POOL_SIZE} unique characters")
     print(f"Password Length:       {length} characters")
-    print(f"Calculated Entropy:  {entropy} bits")
+    print(f"Logarithmic Entropy: {entropy} bits")
     print(f"Estimated Strength:  {strength}")
-    print("-----------------------------\n")
+    print(colored("-----------------------------", Colors.BOLD) + "\n")
 
     generated_passwords = []
     
     for i in range(1, count + 1):
         pwd = generate_password(length)
         generated_passwords.append(pwd)
-        print(f"#{i}: {pwd}")
-
+        print(f"#{i}: {colored(pwd, Colors.INFO)}") # Colorize the actual generated password
+        
     # 4. Save to Temporary File and Encrypt (if requested)
     if temp_file and save_file:
         try:
@@ -196,12 +249,12 @@ def run_generator():
                     f.write(f"{pwd}\n")
                 f.write("\n--- End of Passwords ---\n")
             
-            print(f"\nSuccessfully saved {count} passwords to temporary file '{temp_file}'.")
+            print(colored(f"\nSuccessfully saved {count} passwords to temporary file '{temp_file}'.", Colors.INFO))
             
             # 4b: Get Password from User
             encryption_key = getpass.getpass("Enter your chosen encryption password (will not be displayed): ").strip()
             if not encryption_key:
-                print("Error: Encryption password cannot be empty. Cancelling save.")
+                print(colored("Error: Encryption password cannot be empty. Cancelling save.", Colors.FAIL))
                 raise ValueError("Empty encryption key.")
 
             # 4c: Encrypt
@@ -210,20 +263,14 @@ def run_generator():
             # 4d: Clean up the Temporary File
             secure_delete(temp_file)
             
-        except subprocess.CalledProcessError as e:
-            error_output = e.stderr or "No specific error output from OpenSSL."
-            print(f"\nError: OpenSSL encryption failed. Passwords were only displayed above.")
-            print(f"Error details: {error_output}")
+        except (ValueError, IOError) as e:
+            print(colored(f"\nError during save/encryption process: {e}", Colors.FAIL))
             if os.path.exists(temp_file):
-                print(f"The temporary file '{temp_file}' still exists and must be SECURELY DELETED.")
-        
-        except (FileNotFoundError, ValueError) as e:
-            print(f"\nError: {'The openssl command was not found.' if isinstance(e, FileNotFoundError) else str(e)}")
+                print(colored(f"The temporary file '{temp_file}' still exists and must be SECURELY DELETED.", Colors.FAIL + Colors.BOLD))
+        except Exception as e:
+            print(colored(f"\nAn unexpected error occurred: {e}", Colors.FAIL))
             if os.path.exists(temp_file):
-                print(f"The temporary file '{temp_file}' still exists and must be SECURELY DELETED.")
-            
-        except IOError:
-            print(f"\nError: Failed to write to temporary file {temp_file}.")
+                print(colored(f"The temporary file '{temp_file}' still exists and must be SECURELY DELETED.", Colors.FAIL + Colors.BOLD))
             
     print("\nGenerator finished. Don't forget to secure the generated passwords.")
 
@@ -231,12 +278,12 @@ def run_generator():
 
 def decrypt_file():
     """Logic for decrypting an encrypted file and offering re-encryption."""
-    print("\n--- OpenSSL File Decryption ---")
+    print(colored("\n--- Fernet File Decryption ---", Colors.HEADER + Colors.BOLD))
     
     encrypted_file = input("Enter the name of the ENCRYPTED file (e.g., passwords_encrypted_YYYYMMDD_HHMMSS.enc): ").strip()
     
     if not encrypted_file or not os.path.exists(encrypted_file):
-        print(f"Decryption cancelled. File '{encrypted_file}' not found or name not provided.")
+        print(colored(f"Decryption cancelled. File '{encrypted_file}' not found or name not provided.", Colors.WARNING))
         return
 
     if encrypted_file.endswith(".enc"):
@@ -244,44 +291,53 @@ def decrypt_file():
     else:
         decrypted_file = encrypted_file + "_decrypted.txt"
     
-    print(f"The decrypted content will be saved to: {decrypted_file}")
+    print(colored(f"The decrypted content will be saved to: {decrypted_file}", Colors.INFO))
     
     decryption_key = getpass.getpass("Enter the decryption password (will not be displayed): ").strip()
 
     if not decryption_key:
-        print("Error: Decryption password cannot be empty. Cancelling decryption.")
+        print(colored("Error: Decryption password cannot be empty. Cancelling decryption.", Colors.FAIL))
         return
 
     try:
-        # Execute decryption command
-        openssl_command = [
-            'openssl', 'enc', '-aes-256-cbc', 
-            '-d', '-salt', '-k', '-', 
-            '-in', encrypted_file, 
-            '-out', decrypted_file
-        ]
+        # 1. Read encrypted content (binary mode)
+        with open(encrypted_file, 'rb') as f_in_binary:
+            file_content = f_in_binary.read()
         
-        subprocess.run(
-            openssl_command, 
-            input=decryption_key + '\n', 
-            check=True, 
-            capture_output=True, 
-            text=True, 
-            encoding='utf-8'
-        )
+        # 2. Extract salt (first 16 bytes) and encrypted token
+        if len(file_content) < 16:
+            print(colored("Error: Encrypted file is too short/corrupted.", Colors.FAIL))
+            return
 
-        print(f"\nDecryption successful! Content saved to '{decrypted_file}'.")
+        salt = file_content[:16]
+        encrypted_token = file_content[16:]
         
-        # --- Display Content ---
-        print("\n--- Decrypted Content ---")
+        # 3. Derive key and initialize Fernet
+        key = derive_key(decryption_key, salt)
+        f = Fernet(key)
+
+        # 4. Decrypt the content
         try:
-            with open(decrypted_file, 'r', encoding='utf-8') as f:
-                print(f.read())
-        except IOError:
-            print(f"Error: Could not read content from '{decrypted_file}'.")
-        print("---------------------------\n")
+            decrypted_bytes = f.decrypt(encrypted_token)
+        except InvalidToken:
+            print(colored("\n❌ Decryption failed: Invalid password or corrupted data.", Colors.FAIL))
+            return
 
-        print("WARNING: The file listed above is currently saved as PLAIN TEXT on disk.")
+        # 5. Decode to text (assuming it's UTF-8 text)
+        decrypted_content = decrypted_bytes.decode('utf-8')
+
+        # 6. Write decrypted content to temporary file (text mode)
+        with open(decrypted_file, 'w', encoding='utf-8') as f_out_text:
+            f_out_text.write(decrypted_content)
+
+        print(colored(f"\nDecryption successful! Content saved to '{decrypted_file}'.", Colors.SUCCESS))
+
+        # --- Display Content ---
+        print(colored("\n--- Decrypted Content ---", Colors.BOLD))
+        print(decrypted_content)
+        print(colored("---------------------------", Colors.BOLD) + "\n")
+
+        print(colored("WARNING: The file listed above is currently saved as PLAIN TEXT on disk.", Colors.FAIL))
         print("You can now open and edit the file if needed.")
         
         # --- Offer Re-encryption ---
@@ -290,39 +346,38 @@ def decrypt_file():
         if re_encrypt_choice == 'y':
             print(f"Re-encrypting the file back to '{encrypted_file}'.")
             
+            # Re-encrypt using the original password
             encrypt_file(decrypted_file, encrypted_file, decryption_key)
             
             # Clean up the decrypted file SECURELY
             secure_delete(decrypted_file) 
-            print("\nRe-encryption complete. Plain-text file automatically deleted.")
+            print(colored("\nRe-encryption complete. Plain-text file automatically deleted.", Colors.SUCCESS))
             
         else:
-            print(f"\nWARNING: The file '{decrypted_file}' is currently in PLAIN TEXT.")
+            print(colored(f"\nWARNING: The file '{decrypted_file}' is currently in PLAIN TEXT.", Colors.FAIL + Colors.BOLD))
             print("Remember to SECURELY delete or re-encrypt it when finished editing.")
 
 
-    except subprocess.CalledProcessError as e:
-        error_output = e.stderr or "No specific error output from OpenSSL."
-        print(f"\nError: OpenSSL decryption failed. This is often due to an incorrect password.")
-        print(f"Error details: {error_output}")
+    except IOError as e:
+        print(colored(f"\nError: Could not read/write file during decryption: {e}", Colors.FAIL))
         if os.path.exists(decrypted_file):
-            # Clean up the failed output file (standard delete if shred not found)
+            # Clean up the failed output file 
             secure_delete(decrypted_file)
             print(f"Incomplete output file has been deleted.")
             
-    except FileNotFoundError:
-        print("\nError: The 'openssl' command was not found.")
-        print("Please ensure OpenSSL is installed and available in your system's PATH.")
-        
-    except IOError:
-        print(f"\nError: Could not write to output file {decrypted_file}.")
+    except Exception as e:
+        print(colored(f"\nAn unexpected error occurred: {e}", Colors.FAIL))
+        if os.path.exists(decrypted_file):
+            # Clean up the failed output file 
+            secure_delete(decrypted_file)
+            print(f"Incomplete output file has been deleted.")
 
 # ---------------------------------------------------------------------
 
 def main():
     """Main execution function with choice of Generate or Decrypt."""
     
-    print("--- Unicode Password Utility (Generate/Decrypt) ---")
+    print(colored("--- Unicode Password Utility (Generate/Decrypt) ---", Colors.HEADER + Colors.BOLD))
     
     choice = input("Do you want to (G)enerate passwords or (D)ecrypt a file? (g/d): ").strip().lower()
     
@@ -331,9 +386,13 @@ def main():
     elif choice == 'd':
         decrypt_file()
     else:
-        print("Invalid choice. Exiting.")
+        print(colored("Invalid choice. Exiting.", Colors.WARNING))
         
     print("\nHave a great day!")
+
+
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":
