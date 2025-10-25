@@ -1,85 +1,100 @@
-# Unicode-Password-Generator-Python-Script
+🔑 **Unicode Password Utility**
 
-This is a secure, high-entropy password generator written in Python 3 that utilizes a massive Unicode character pool.
+The Unicode Password Utility is a Python 3 script designed for generating cryptographically strong, high-entropy passwords using an extensive Unicode character pool and managing them securely through file encryption.
 
-It prompts the user for the desired password length and count, then generates cryptographically secure passwords using Python's secrets module. It also calculates the Shannon Entropy to provide a numerical measure of password strength and offers the option to safely save the generated passwords to a timestamped UTF-8 encoded file..
+It leverages the modern cryptography library (Fernet, AES-128 GCM) and prioritizes security by integrating methods for secure file deletion to ensure plain-text passwords are not left on disk.
 
-```
-$ python3 unigen.py
---- Unicode Password Utility (Generate/Decrypt) ---
-Do you want to (G)enerate passwords or (D)ecrypt a file? (g/d): g
+✨ **Key Features**
 
---- Unicode Password Generator (Python 3) ---
-Enter desired password length (e.g., 20): 16
-Enter number of passwords to generate (e.g., 3): 5
-Do you want to save the passwords to an *ENCRYPTED* file? (y/n): y
-Passwords will be saved to temporary file: passwords_temp_20251003_045311.txt
-Then encrypted to final file: passwords_encrypted_20251003_045311.enc
+1. High-Entropy Generation: Generates passwords using a vast pool of over 400 unique Unicode characters (Latin, Cyrillic, CJK, Math Symbols, Dingbats, etc.).
 
---- Generation Parameters ---
-Character Pool Size: 414 unique characters
-Password Length:       16 characters
-Calculated Entropy:  139.1 bits
-Estimated Strength:  Very Strong
------------------------------
+2. Cryptographic Security: Uses Fernet (built on AES-128 GCM) for strong encryption of saved password files, secured by a user-provided password.
 
-#1: гvAПñj☢符нЯ¢ญęचbО
-#2: नYW>£पO中qыशã₴ष€ऊ
-#3: öà語щฬвuテ☆ภฒó£hधù
-#4: ป฿œéएKūटรप`ъ2I-Ω
-#5: ☢çअध☀īउСn76ธыо3シ
+3. Password Strength Rating: Calculates and displays the logarithmic entropy (in bits) of generated passwords.
 
-Successfully saved 5 passwords to temporary file 'passwords_temp_20251003_045311.txt'.
-Enter your chosen encryption password (will not be displayed): 
+4. Secure Deletion: Employs the external shred utility (Linux/macOS) or a robust Python-native secure overwrite mechanism as a fallback to destroy temporary and decrypted plain-text files.
 
---- Starting OpenSSL Encryption: passwords_temp_20251003_045311.txt -> passwords_encrypted_20251003_045311.enc ---
-Encryption successful! Content saved to 'passwords_encrypted_20251003_045311.enc'.
+5. Integrated Editor: Allows users to specify and launch an external text editor (like nano, vi, or notepad) immediately after decryption for easy modification before re-encryption.
 
-Attempting to securely delete: passwords_temp_20251003_045311.txt
-✅ Secure deletion via 'shred' successful.
+🛠 **Prerequisites**
 
-Generator finished. Don't forget to secure the generated passwords.
+To run this utility, you need:
 
-Have a great day!
-$ python3 unigen.py
---- Unicode Password Utility (Generate/Decrypt) ---
-Do you want to (G)enerate passwords or (D)ecrypt a file? (g/d): d
+Python 3.6+
 
---- OpenSSL File Decryption ---
-Enter the name of the ENCRYPTED file (e.g., passwords_encrypted_YYYYMMDD_HHMMSS.enc): passwords_encrypted_20251003_045311.enc
-The decrypted content will be saved to: passwords_encrypted_20251003_045311_decrypted.txt
-Enter the decryption password (will not be displayed): 
+The cryptography library.
 
-Decryption successful! Content saved to 'passwords_encrypted_20251003_045311_decrypted.txt'.
+🚀 **Installation**
 
---- Decrypted Content ---
---- Generated Passwords ---
+1. Download Script
 
-гvAПñj☢符нЯ¢ญęचbО
-नYW>£पO中qыशã₴ष€ऊ
-öà語щฬвuテ☆ภฒó£hधù
-ป฿œéएKūटรप`ъ2I-Ω
-☢çअध☀īउСn76ธыо3シ
+```wget https://raw.githubusercontent.com/A113L/Unicode-Password-Generator-Bash-Script/refs/heads/main/unigen.py```
 
---- End of Passwords ---
 
----------------------------
+2. Install Dependencies
 
-WARNING: The file listed above is currently saved as PLAIN TEXT on disk.
-You can now open and edit the file if needed.
-Do you want to re-encrypt 'passwords_encrypted_20251003_045311_decrypted.txt' now? (y/n): y
-Re-encrypting the file back to 'passwords_encrypted_20251003_045311.enc'.
+You only need the cryptography library:
 
---- Starting OpenSSL Encryption: passwords_encrypted_20251003_045311_decrypted.txt -> passwords_encrypted_20251003_045311.enc ---
-Encryption successful! Content saved to 'passwords_encrypted_20251003_045311.enc'.
+```pip install cryptography```
 
-Attempting to securely delete: passwords_encrypted_20251003_045311_decrypted.txt
-✅ Secure deletion via 'shred' successful.
 
-Re-encryption complete. Plain-text file automatically deleted.
+3. (Optional) Check for shred
 
-Have a great day!
+The script automatically prefers the shred utility for the most secure file deletion on Linux and macOS. If you are on Windows or shred is not available, the script will automatically use the built-in Python secure overwrite fallback.
 
-```
+💻 **Usage**
 
-The password for re-encryption is not retrieved again from the user, but is securely stored temporarily in RAM as a variable for immediate use in re-locking the file. This is an acceptable and common practice when it is necessary to perform two related cryptographic operations within a single session.
+Run the script from your terminal:
+
+```python3 unigen.py```
+
+
+The script will prompt you to choose between two modes: (G)enerate or (D)ecrypt.
+
+1. **Generate Mode (G)**
+
+This mode creates new passwords and saves them securely.
+
+*Choose (G)enerate.*
+
+Enter the desired password length and count.
+
+*Choose y to save to an ENCRYPTED file.*
+
+The passwords are written to a temporary plain-text file (passwords_temp_*.txt).
+
+You will be prompted to enter a strong encryption password.
+
+The temporary file is encrypted to the final .enc file.
+
+CRITICAL: The temporary plain-text file is then securely deleted.
+
+2. **Decrypt Mode (D)**
+
+This mode allows you to safely view and edit your stored passwords.
+
+*Choose (D)ecrypt.*
+
+Enter the name of your encrypted file (e.g., passwords_encrypted_*.enc).
+
+Enter the decryption password.
+
+The content is decrypted and written to a plain-text file (e.g., original_file_decrypted.txt).
+
+The script will display the content and WARN you that the plain-text file is currently on disk.
+
+You will be prompted to enter an editor command (e.g., nano, notepad, code) to edit the plain-text file.
+
+After exiting the editor, you will be prompted to re-encrypt the file. Choosing y will:
+
+Re-encrypt the edited content back to the original encrypted file.
+
+SECURELY DELETE the plain-text decrypted file.
+
+🔒 **Security Notes**
+
+*Master Password:* The security of your encrypted file relies entirely on the strength of the encryption password you choose. Use a unique and very strong phrase for this.
+
+*File Deletion:* While shred is the gold standard for secure file deletion on most Unix-like systems, the Python-native fallback provides a multi-pass overwrite using random data and zeros. Always verify that the script reports a successful secure deletion. If a "FATAL SECURITY WARNING" appears, the file may require manual secure deletion.
+
+*Encryption Standard:* Fernet ensures authenticated encryption (integrity and confidentiality) using AES-128 GCM.
